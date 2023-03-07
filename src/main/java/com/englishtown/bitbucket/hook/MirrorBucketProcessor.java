@@ -30,6 +30,8 @@ public class MirrorBucketProcessor implements BucketProcessor<MirrorRequest> {
 
     private static final String DEFAULT_REFSPEC = "+refs/heads/*:refs/heads/*";
 
+    private static final String DEFAULT_REFSPEC_NO_FORCE = "";
+
     private static final Logger log = LoggerFactory.getLogger(MirrorBucketProcessor.class);
 
     private final I18nService i18nService;
@@ -76,8 +78,53 @@ public class MirrorBucketProcessor implements BucketProcessor<MirrorRequest> {
                     }
                     runMirrorCommand(request.getSettings(), repository);
 
+                    String refspecsNoForce = Strings.isNullOrEmpty(request.getSettings().refspecNoForce)
+                            ? DEFAULT_REFSPEC_NO_FORCE : request.getSettings().refspecNoForce;
+                    if (!Strings.isNullOrEmpty(refspecsNoForce)) {
+                        runMirrorNoForceCommand(request.getSettings(), repository);
+                    }
+
                     return null;
                 });
+    }
+
+    private void runMirrorNoForceCommand(MirrorSettings settings, Repository repository) {
+        log.debug("{}: Preparing to push changes to mirror", repository);
+
+        String password = passwordEncryptor.decrypt(settings.password);
+        String authenticatedUrl = getAuthenticatedUrl(settings.mirrorRepoUrl, settings.username, password);
+
+        // Call push command with the prune flag and refspecs for heads and tags
+        // Do not use the mirror flag as pull-request refs are included
+        ScmCommandBuilder<?> builder = scmService.createBuilder(repository)
+                .command("push")
+                .argument("--prune") // this deletes locally deleted branches
+                .argument(authenticatedUrl);
+
+        // Use an atomic transaction to have a consistent state
+        if (settings.atomic) {
+            builder.argument("--atomic");
+        }
+
+        // Add refspec args
+        String refspecs =
+                Strings.isNullOrEmpty(settings.refspecNoForce) ? DEFAULT_REFSPEC_NO_FORCE : settings.refspecNoForce;
+        for (String refspec : refspecs.split("\\s|\\n")) {
+            if (!Strings.isNullOrEmpty(refspec)) {
+                builder.argument(refspec);
+            }
+        }
+
+        PasswordHandler passwordHandler = new PasswordHandler(settings.password,
+                new GitCommandExitHandler(i18nService, repository));
+
+        Command<String> command = builder.errorHandler(passwordHandler)
+                .exitHandler(passwordHandler)
+                .build(passwordHandler);
+        command.setTimeout(timeout);
+
+        Object result = command.call();
+        log.info("{}: Push completed with the following output:\n{}", repository, result);
     }
 
     private void runMirrorCommand(MirrorSettings settings, Repository repository) {

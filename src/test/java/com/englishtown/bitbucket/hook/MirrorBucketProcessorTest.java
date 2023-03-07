@@ -42,6 +42,7 @@ public class MirrorBucketProcessorTest {
             mirrorRepoUrl = URL_SSH;
             password = "test-password";
             refspec = "+refs/heads/master:refs/heads/master +refs/heads/develop:refs/heads/develop";
+            refspecNoForce = "";
             username = "test-user";
 
             atomic = true;
@@ -52,11 +53,32 @@ public class MirrorBucketProcessorTest {
     private static final MirrorRequest REQUEST = new MirrorRequest(1, SETTINGS);
     private static final List<MirrorRequest> REQUESTS = Collections.singletonList(REQUEST);
 
+    private static final MirrorSettings SETTINGS_WITH_NO_FORCE = new MirrorSettings() {
+        {
+            mirrorRepoUrl = URL_SSH;
+            password = "test-password";
+            refspec = "";
+            refspecNoForce = "+refs/heads/master:refs/heads/master +refs/heads/develop:refs/heads/develop";
+            username = "test-user";
+
+            atomic = true;
+            notes = true;
+            tags = true;
+        }
+    };
+    private static final MirrorRequest REQUEST_WITH_NO_FORCE = new MirrorRequest(1, SETTINGS_WITH_NO_FORCE);
+    private static final List<MirrorRequest> REQUESTS_WITH_NO_FORCE = Collections.singletonList(REQUEST_WITH_NO_FORCE);
+
     @Rule
     public MockitoRule mockitoRule = MockitoJUnit.rule().silent();
 
     @Mock
     private GitScmCommandBuilder builder;
+
+    private boolean isFirstBuilderCreated = false;
+
+    @Mock
+    private GitScmCommandBuilder builderNoForce;
     @Mock
     private GitCommand<String> command;
     @Spy
@@ -83,10 +105,23 @@ public class MirrorBucketProcessorTest {
         when(builder.exitHandler(any())).thenAnswer(returnsSelf());
         when(builder.<String>build(any())).thenReturn(command);
 
+        when(builderNoForce.command(anyString())).thenAnswer(returnsSelf());
+        when(builderNoForce.argument(anyString())).thenAnswer(returnsSelf());
+        when(builderNoForce.errorHandler(any())).thenAnswer(returnsSelf());
+        when(builderNoForce.exitHandler(any())).thenAnswer(returnsSelf());
+        when(builderNoForce.<String>build(any())).thenReturn(command);
+
         when(passwordEncryptor.decrypt(anyString())).thenAnswer(returnFirst());
         when(propertiesService.getPluginProperty(eq(PROP_TIMEOUT), anyLong())).thenAnswer(returnArg(1));
 
-        doReturn(builder).when(scmService).createBuilder(any());
+        // Return builder for first call to createBuilder, then always return builderNoForce
+        doAnswer(invocation -> {
+            if (isFirstBuilderCreated) {
+                return builderNoForce;
+            }
+            isFirstBuilderCreated = true;
+            return builder;
+        }).when(scmService).createBuilder(any());
 
         processor = new MirrorBucketProcessor(i18nService, passwordEncryptor,
                 propertiesService, repositoryService, scmService, securityService);
@@ -111,6 +146,39 @@ public class MirrorBucketProcessorTest {
         verify(command).setTimeout(eq(Duration.ofSeconds(120L)));
         verify(passwordEncryptor).decrypt(eq(SETTINGS.password));
         verify(scmService).createBuilder(same(repository));
+
+        verify(builderNoForce, never()).command(anyString());
+    }
+
+    @Test
+    public void testProcessWithNoForce() {
+        when(repositoryService.getById(eq(1))).thenReturn(repository);
+
+        processor.process("ignored", REQUESTS_WITH_NO_FORCE);
+
+        verify(builder).command(eq("push"));
+        verify(builder).argument(eq("--prune"));
+        verify(builder).argument(eq("--force"));
+        verify(builder).argument(eq(URL_SSH));
+        verify(builder).argument(eq("--atomic"));
+        verify(builder).argument(eq("+refs/tags/*:refs/tags/*"));
+        verify(builder).argument(eq("+refs/notes/*:refs/notes/*"));
+        // called twice
+        verify(command, times(2)).call();
+
+        verify(command, times(2)).setTimeout(eq(Duration.ofSeconds(120L)));
+        verify(passwordEncryptor, times(2)).decrypt(eq(SETTINGS.password));
+        verify(scmService, times(2)).createBuilder(same(repository));
+
+        verify(builderNoForce).command(eq("push"));
+        verify(builderNoForce).argument(eq("--prune"));
+        verify(builderNoForce, never()).argument(eq("--force"));
+        verify(builderNoForce).argument(eq(URL_SSH));
+        verify(builderNoForce).argument(eq("--atomic"));
+        verify(builderNoForce).argument(eq("+refs/heads/master:refs/heads/master"));
+        verify(builderNoForce).argument(eq("+refs/heads/develop:refs/heads/develop"));
+        verify(builderNoForce, never()).argument(eq("+refs/tags/*:refs/tags/*"));
+        verify(builderNoForce, never()).argument(eq("+refs/notes/*:refs/notes/*"));
     }
 
     @Test
