@@ -32,6 +32,7 @@ public class MirrorRepositoryHook implements PostRepositoryHook<RepositoryHookRe
     static final String SETTING_USERNAME = "username";
     static final String SETTING_PASSWORD = "password";
     static final String SETTING_REFSPEC = "refspec";
+    static final String SETTING_REFSPEC_NO_FORCE = "refspecNoForce";
     static final String SETTING_TAGS = "tags";
     static final String SETTING_NOTES = "notes";
     static final String SETTING_ATOMIC = "atomic";
@@ -161,6 +162,7 @@ public class MirrorRepositoryHook implements PostRepositoryHook<RepositoryHookRe
                 ms.username = settings.getString(SETTING_USERNAME + suffix, "");
                 ms.password = settings.getString(SETTING_PASSWORD + suffix, "");
                 ms.refspec = (settings.getString(SETTING_REFSPEC + suffix, ""));
+                ms.refspecNoForce = (settings.getString(SETTING_REFSPEC_NO_FORCE + suffix, ""));
                 ms.tags = (settings.getBoolean(SETTING_TAGS + suffix, defTags));
                 ms.notes = (settings.getBoolean(SETTING_NOTES + suffix, defNotes));
                 ms.atomic = (settings.getBoolean(SETTING_ATOMIC + suffix, defAtomic));
@@ -226,6 +228,13 @@ public class MirrorRepositoryHook implements PostRepositoryHook<RepositoryHookRe
             }
         }
 
+        if (!ms.refspecNoForce.isEmpty()) {
+            if (!ms.refspecNoForce.contains(":")) {
+                result = false;
+                errors.addFieldError(SETTING_REFSPEC_NO_FORCE + ms.suffix, "A refspecNoForce should be in the form <src>:<dest>.");
+            }
+        }
+
         return result;
     }
 
@@ -236,6 +245,7 @@ public class MirrorRepositoryHook implements PostRepositoryHook<RepositoryHookRe
             values.put(SETTING_USERNAME + ms.suffix, ms.username);
             values.put(SETTING_PASSWORD + ms.suffix, (ms.password.isEmpty() ? ms.password : passwordEncryptor.encrypt(ms.password)));
             values.put(SETTING_REFSPEC + ms.suffix, ms.refspec);
+            values.put(SETTING_REFSPEC_NO_FORCE + ms.suffix, ms.refspecNoForce);
             values.put(SETTING_TAGS + ms.suffix, ms.tags);
             values.put(SETTING_NOTES + ms.suffix, ms.notes);
             values.put(SETTING_ATOMIC + ms.suffix, ms.atomic);

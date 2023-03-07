@@ -9,6 +9,7 @@ class MirrorSettings implements Serializable {
     String password;
     String suffix;
     String refspec;
+    String refspecNoForce;
     boolean tags;
     boolean notes;
     boolean atomic;
