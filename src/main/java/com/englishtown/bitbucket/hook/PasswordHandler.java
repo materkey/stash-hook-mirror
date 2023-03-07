@@ -4,6 +4,8 @@ import com.atlassian.bitbucket.scm.CommandErrorHandler;
 import com.atlassian.bitbucket.scm.CommandExitHandler;
 import com.atlassian.bitbucket.scm.CommandOutputHandler;
 import com.atlassian.bitbucket.io.StringOutputHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -16,6 +18,8 @@ class PasswordHandler extends StringOutputHandler
 
     private final String target;
     private final CommandExitHandler exitHandler;
+
+    private static final Logger log = LoggerFactory.getLogger(PasswordHandler.class);
 
     private static final String PASSWORD_REPLACEMENT = ":*****@";
 
@@ -38,11 +42,13 @@ class PasswordHandler extends StringOutputHandler
 
     @Override
     public void onCancel(@Nonnull String command, int exitCode, @Nullable String stdErr, @Nullable Throwable thrown) {
+        log.error(getOutput());
         exitHandler.onCancel(cleanText(command), exitCode, cleanText(stdErr), thrown);
     }
 
     @Override
     public void onExit(@Nonnull String command, int exitCode, @Nullable String stdErr, @Nullable Throwable thrown) {
+        log.error(getOutput());
         exitHandler.onExit(cleanText(command), exitCode, cleanText(stdErr), thrown);
     }
 
